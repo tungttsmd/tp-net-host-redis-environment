@@ -11,7 +11,7 @@ set "RESET=%ESC%[0m"
 
 set "CONFIG_FILE=%~dp0.redis-path"
 set "CONF_FILE=%~dp0redis.conf"
-set "PORT=6379"
+set "PORT="
 
 :: ═══════════════════════════════════════════════════════════════════════════════
 echo.
@@ -25,7 +25,6 @@ echo  --------------------------------------------------------------------------
 
 if not exist "%CONF_FILE%" (
     echo # Redis Configuration> "%CONF_FILE%"
-    echo.>> "%CONF_FILE%"
     echo bind 127.0.0.1>> "%CONF_FILE%"
     echo port 6379>> "%CONF_FILE%"
     echo.>> "%CONF_FILE%"
@@ -34,11 +33,6 @@ if not exist "%CONF_FILE%" (
     echo.>> "%CONF_FILE%"
     echo # Log level: debug, verbose, notice, warning>> "%CONF_FILE%"
     echo loglevel notice>> "%CONF_FILE%"
-    echo.>> "%CONF_FILE%"
-    echo # Không lưu snapshot (comment lại nếu muốn persistence)>> "%CONF_FILE%"
-    echo # save 900 1>> "%CONF_FILE%"
-    echo # save 300 10>> "%CONF_FILE%"
-    echo # save 60 10000>> "%CONF_FILE%"
 )
 
 if not exist "%CONFIG_FILE%" (
@@ -141,7 +135,7 @@ for /f "usebackq tokens=3 delims= " %%v in ("%REDIS_VER_TMP%") do (
 )
 del "%REDIS_VER_TMP%" >nul 2>&1
 
-:: Cắt bỏ phần sau dấu space nếu có (ví dụ "v5.0.14.1" -> lấy số)
+:: Cắt bỏ phần sau dấu space nếu có (ví dụ "v5.0.14.1" để lấy số)
 for /f "tokens=1 delims= " %%v in ("!REDIS_VERSION!") do set "REDIS_VERSION=%%v"
 
 if "!REDIS_VERSION!"=="" (
@@ -162,23 +156,44 @@ echo  %GREEN%[DONE]%RESET%  Phiên bản Redis: !REDIS_VERSION!
 echo.
 
 :: ═══════════════════════════════════════════════════════════════════════════════
+:: Đọc port và host từ redis.conf
+:: ═══════════════════════════════════════════════════════════════════════════════
+set "HOST="
+for /f "tokens=2" %%h in ('findstr /r "^bind " "%CONF_FILE%"') do set "HOST=%%h"
+for /f "tokens=2" %%p in ('findstr /r "^port " "%CONF_FILE%"') do set "PORT=%%p"
+
+if "!HOST!"=="" (
+    set "HOST=127.0.0.1"
+    echo  %YELLOW%[WARN]%RESET%  Không tìm thấy bind trong %CONF_FILE%, sử dụng mặc định 127.0.0.1
+    echo.
+)
+
+if "!PORT!"=="" (
+    set "PORT=6379"
+    echo  %YELLOW%[WARN]%RESET%  Không tìm thấy port trong %CONF_FILE%, sử dụng mặc định 6379
+    echo.
+)
+
+:: ═══════════════════════════════════════════════════════════════════════════════
 :: Tất cả OK - Kiểm tra port rồi khởi động
 :: ═══════════════════════════════════════════════════════════════════════════════
 :run
 echo  %GREEN%[OK]%RESET%    Version  : !REDIS_VERSION!
 echo  %GREEN%[OK]%RESET%    Path     : !REDIS_EXE!
 echo  %GREEN%[OK]%RESET%    Config   : %CONF_FILE%
+echo  %GREEN%[OK]%RESET%    Host     : !HOST!
+echo  %GREEN%[OK]%RESET%    Port     : !PORT!
 echo.
-echo  %CYAN%[INFO]%RESET%  Kiểm tra port %PORT%...
+echo  %CYAN%[INFO]%RESET%  Kiểm tra port !PORT%...
 echo.
 
 set "PORT_BUSY=0"
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r ":%PORT% "') do set "PORT_PID=%%p" & set "PORT_BUSY=1"
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r ":!PORT! "') do set "PORT_PID=%%p" & set "PORT_BUSY=1"
 
 if "!PORT_BUSY!"=="1" (
     set "PORT_PNAME=unknown"
     for /f "tokens=1 delims=," %%n in ('tasklist /fi "PID eq !PORT_PID!" /fo csv /nh 2^>nul') do set "PORT_PNAME=%%~n"
-    echo  %RED%[ERROR]%RESET%  Port %PORT% đang bị chiếm.
+    echo  %RED%[ERROR]%RESET%  Port !PORT! đang bị chiếm.
     echo.
     echo  -------------------------------------------------------------------------------
     echo.
@@ -193,7 +208,7 @@ if "!PORT_BUSY!"=="1" (
     exit /b 1
 )
 
-echo  %GREEN%[OK]%RESET%    Port %PORT% sẵn sàng.
+echo  %GREEN%[OK]%RESET%    Port !PORT! sẵn sàng.
 echo.
 echo  -------------------------------------------------------------------------------
 echo.
